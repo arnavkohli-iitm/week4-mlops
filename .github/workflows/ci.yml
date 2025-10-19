@@ -56,7 +56,7 @@ jobs:
           echo "" >> report.md
           echo "### ✅ Pytest Results" >> report.md
           echo '```' >> report.md
-          cat pytest-results.txt
+          cat pytest-results.txt >> report.md
           echo '```' >> report.md
           echo "" >> report.md
           echo "### 🔮 Prediction Sanity Check" >> report.md
