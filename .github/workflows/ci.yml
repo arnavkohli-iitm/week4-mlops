@@ -26,6 +26,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # --- STEP 1: ADDED CML SETUP ---
+      - name: Setup CML
+        uses: iterative/setup-cml@v2
+
       - name: Authenticate Google Cloud
         run: |
           echo "${{ secrets.GCS_SA_KEY }}" | base64 -d > gcs-key.json
@@ -37,15 +41,12 @@ jobs:
         run: |
           dvc pull
 
-      # --- STEP 1: MODIFIED ---
       - name: Run Pytest
         id: pytest
         continue-on-error: true # Don't stop on test failure
         run: |
-          # Run pytest and save ALL output (stdout and stderr) to a file
           pytest > pytest-results.txt 2>&1
 
-      # --- STEP 2: MODIFIED ---
       - name: Generate Sanity Test Report
         if: always() && github.event_name == 'pull_request'
         env:
@@ -55,8 +56,7 @@ jobs:
           echo "" >> report.md
           echo "### ✅ Pytest Results" >> report.md
           echo '```' >> report.md
-          # Print the contents of the results file
-          cat pytest-results.txt
+          cat pytest-results.txt >> report.md
           echo '```' >> report.md
           echo "" >> report.md
           echo "### 🔮 Prediction Sanity Check" >> report.md
@@ -65,10 +65,10 @@ jobs:
           python predict.py 5.1 3.5 1.4 0.2 >> report.md
           echo '```' >> report.md
 
+      # --- STEP 2: CHANGED BACK TO A 'run:' STEP ---
       - name: Post CML Comment
         if: always() && github.event_name == 'pull_request'
-        uses: iterative/setup-cml@v2
-        with:
-          report: report.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cml comment create report.md
