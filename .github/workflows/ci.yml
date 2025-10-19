@@ -1,0 +1,43 @@
+name: DVC & Pytest CI
+
+on:
+  # Run on pushes to the 'dev' branch
+  push:
+    branches:
+      - dev
+  # Also run on pull requests to 'main'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10' # You can change this version
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Authenticate Google Cloud
+        run: |
+          # Decode the base64 secret and save it to a temp file
+          echo "${{ secrets.GCS_SA_KEY }}" | base64 -d > gcs-key.json
+          # Tell DVC to use this key
+          export GOOGLE_APPLICATION_CREDENTIALS=gcs-key.json
+
+      - name: Fetch DVC data and model
+        run: |
+          dvc pull
+
+      - name: Run Pytest
+        run: |
+          pytest
