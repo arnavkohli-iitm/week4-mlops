@@ -65,7 +65,7 @@ jobs:
       # --- THIS IS THE NEW, REPLACED STEP ---
       - name: Post CML Comment
         if: always() && github.event_name == 'pull_request'
-        uses: iterative/cml@v2
+        uses: iterative/setup-cml@v2
         with:
           report: report.md  # Tell the action which file to post
         env:
