@@ -37,14 +37,16 @@ jobs:
         run: |
           dvc pull
 
+      # --- STEP 1: MODIFIED ---
       - name: Run Pytest
-        id: pytest # Give this step an ID
-        continue-on-error: true # <-- IMPORTANT: Don't stop on test failure
+        id: pytest
+        continue-on-error: true # Don't stop on test failure
         run: |
-          pytest
+          # Run pytest and save ALL output (stdout and stderr) to a file
+          pytest > pytest-results.txt 2>&1
 
+      # --- STEP 2: MODIFIED ---
       - name: Generate Sanity Test Report
-        # Run this step even if pytest failed, to report the failure
         if: always() && github.event_name == 'pull_request'
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ env.GOOGLE_APPLICATION_CREDENTIALS }}
@@ -53,7 +55,8 @@ jobs:
           echo "" >> report.md
           echo "### ✅ Pytest Results" >> report.md
           echo '```' >> report.md
-          pytest --summary -q # This will show the pass/fail summary
+          # Print the contents of the results file
+          cat pytest-results.txt
           echo '```' >> report.md
           echo "" >> report.md
           echo "### 🔮 Prediction Sanity Check" >> report.md
@@ -62,12 +65,10 @@ jobs:
           python predict.py 5.1 3.5 1.4 0.2 >> report.md
           echo '```' >> report.md
 
-      # --- THIS IS THE NEW, REPLACED STEP ---
       - name: Post CML Comment
         if: always() && github.event_name == 'pull_request'
         uses: iterative/setup-cml@v2
         with:
-          report: report.md  # Tell the action which file to post
+          report: report.md
         env:
-          # The action needs the token to post a comment
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
