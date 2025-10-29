@@ -59,11 +59,7 @@ jobs:
           cat pytest-results.txt >> report.md
           echo '```' >> report.md
           echo "" >> report.md
-          echo "### 🔮 Prediction Sanity Check" >> report.md
-          echo "Running: \`python predict.py 5.1 3.5 1.4 0.2\`" >> report.md
-          echo '```' >> report.md
-          python predict.py 5.1 3.5 1.4 0.2 >> report.md
-          echo '```' >> report.md
+          echo "### 🔮 Prediction Sanity Chck skipped" >> report.md
 
       # --- STEP 2: CHANGED BACK TO A 'run:' STEP ---
       - name: Post CML Comment

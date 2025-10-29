@@ -4,14 +4,35 @@ import pandas as pd
 
 MODEL_PATH = 'artifacts/model.joblib'
 
+import joblib
+import sys
+import pandas as pd
+import os
+import mlflow.pyfunc
+
+# New Model Loading Function
 def load_model():
-    """Loads the model from disk."""
+    """
+    Loads the latest 'iris-model' from the self-hosted MLflow server.
+    """
+    print("Connecting to MLflow server at http://127.0.0.1:8081...")
     try:
-        model = joblib.load(MODEL_PATH)
+        # Set the tracking URI to our local server
+        mlflow.set_tracking_uri("http://127.0.0.1:8081")
+
+        model_name = "iris-model"
+
+        # Load the latest version of the model
+        model_uri = f"models:/{model_name}/latest" 
+
+        print(f"Loading model '{model_name}' (latest) from MLflow Registry...")
+        model = mlflow.pyfunc.load_model(model_uri)
+        print("Model loaded successfully.")
         return model
-    except FileNotFoundError:
-        print("Error: Model file not found.")
-        print("Please run 'dvc pull' to download the model from GCS.")
+
+    except Exception as e:
+        print(f"Error loading model from MLflow Registry: {e}")
+        print("Did you run the training script to register a model?")
         return None
 
 def format_features(features):
