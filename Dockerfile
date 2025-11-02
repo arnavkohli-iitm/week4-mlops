@@ -17,7 +17,7 @@ COPY main.py .
 COPY predict.py .
 
 # 6. Expose the port the app will run on
-EXPOSE 8081
+EXPOSE 8000
 
 # 7. Define the command to run your app using uvicorn
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
