@@ -1,59 +1,68 @@
-# MLOps Week 5 Assignment: MLflow + Homework Pipeline
+# MLOps Week 6: Continuous Deployment to Kubernetes
 
-This project demonstrates a complete MLOps workflow. It uses **DVC** for data versioning, **MLflow** for experiment tracking and model registry, and **GitHub Actions** for CI/CD.
+This project expands on the Week 5 CI pipeline by adding a full **Continuous Deployment (CD)** workflow.
+
+This pipeline containerizes the ML model's prediction API using **Docker** and automatically deploys it to the **Google Kubernetes Engine (GKE)**. It also uses **Workload Identity** to securely grant the GKE pod permissions to read the MLflow model from Google Cloud Storage.
 
 ## Overview
 
-The project trains a `DecisionTreeClassifier` on the Iris dataset. The key goal is the MLOps pipeline built around it.
+This MLOps pipeline now demonstrates an end-to-end workflow:
 
-This pipeline automatically:
-* Versions the training data using **DVC** with a Google Cloud Storage (GCS) remote.
-* Runs hyperparameter tuning experiments and logs them using a local **MLflow** server.
-* Registers the trained models to the MLflow Model Registry.
-* Separates training and inference logic into distinct scripts.
-* Validates data using **Pytest**.
-* Runs an automated CI/CD pipeline using **GitHub Actions** on every push and pull request.
-* Posts a "sanity report" (test results) as a comment on pull requests using **CML**.
+  * **CI (Week 5):** Validates data and tests code on `pull_request`.
+  * **CD (Week 6):** Builds, pushes, and deploys the production API on `push` to `main`.
 
-## 🛠️ Tools Used
+## 🛠️ New Tools Used
 
-* **Python**: The core programming language.
-* **scikit-learn**: For the machine learning model.
-* **DVC (Data Version Control)**: To version the dataset.
-* **MLflow**: For experiment tracking and model registry.
-* **GCS (Google Cloud Storage)**: Used as the remote storage backend for DVC and MLflow artifacts.
-* **Pytest**: For data validation and model testing.
-* **GitHub Actions**: For automating the CI/CD pipeline.
-* **CML (Continuous Machine Learning)**: For posting test reports back to GitHub pull requests.
+  * **FastAPI / Uvicorn:** Serves the ML model as a REST API.
+  * **Docker:** Containerizes the FastAPI application.
+  * **Google Artifact Registry:** Stores the built Docker container images.
+  * **Google Kubernetes Engine (GKE):** Hosts the running API application.
+  * **Kubernetes (k8s):** Manages the deployment, scaling, and networking of the container.
+  * **Workload Identity:** Securely connects the Kubernetes pod to Google Cloud services (like GCS) without static keys.
 
+## 📂 New Project Structure
 
-## 📂 Project Structure
+This structure highlights the new files added for Week 6.
 
 ```
-
-├── .github/workflows/ci.yml  \# The main CI/CD workflow
-├── data/
-│   └── iris.csv.dvc          \# DVC pointer to our dataset
-├── tests/
-│   ├── test_data_validation.py \# Pytest for checking data integrity
-│   └── test_prediction.py      \# Pytest for checking model loading
-├── mlruns/                   \# Local MLflow experiment tracking data
-├── requirements.txt          \# Project dependencies
-├── train.py                  \# Script for training and logging to MLflow
-└── predict.py                \# Script for loading from MLflow Registry
-
+├── .github/workflows/
+│   ├── ci.yml          # Week 5: DVC check & pytest
+│   └── cd.yml          # Week 6: Build and Deploy to GKE
+├── k8s/
+│   ├── deployment.yaml   # GKE deployment spec
+│   ├── service.yaml      # GKE LoadBalancer service
+│   └── service-account.yaml # KSA for GCS permissions (Workload Identity)
+├── Dockerfile              # Defines the API container
+├── main.py                 # FastAPI application code
+├── predict.py              # Model loading/prediction logic
+├── requirements.txt        # Python dependencies
+└── ... (other files)
 ```
-
 
 ## 🤖 CI/CD Pipeline
 
-The workflow is defined in `.github/workflows/ci.yml` and runs automatically on every `push` and `pull_request`.
+The project now has two distinct pipelines.
+
+### 1\. Continuous Integration (CI)
+
+This pipeline (from Week 5) runs on pull requests to ensure code and data quality.
+
+  * Installs dependencies.
+  * Authenticates to Google Cloud.
+  * Pulls data from DVC.
+  * Runs `pytest` to validate data and code.
+  * Posts a test report to the pull request.
+
+### 2\. Continuous Deployment (CD) 🚀
+
+This new pipeline (`.github/workflows/cd.yml`) triggers on every `push` to the `main` branch and automatically deploys the live API.
 
 Here's what it does:
 
-1.  **Installs** all Python dependencies, including `mlflow`.
-2.  **Authenticates** with Google Cloud Storage.
-3.  **Pulls Data**: Runs `dvc pull` to download the `iris.csv` dataset.
-4.  **Runs Tests**: Executes the `pytest` suite. Model-loading tests are skipped since the CI runner cannot connect to our local MLflow server.
-5.  **Generates Report (on PRs only)**: Generates a Markdown report (`report.md`) containing the `pytest` output.
-6.  **Posts Comment (on PRs only)**: CML posts the `report.md` file as a comment on the pull request.
+1.  **Builds Image:** Uses the `Dockerfile` to build a new container image of the FastAPI application.
+2.  **Pushes to Registry:** Authenticates with GCP and pushes the tagged image to **Google Artifact Registry** (`us-central1-docker.pkg.dev/...`).
+3.  **Deploys to GKE:** Connects to the **Google Kubernetes Engine (GKE)** cluster (`mlops-cluster`).
+4.  **Applies Manifests:** It applies all Kubernetes configuration files from the `k8s/` directory:
+      * `k8s/service-account.yaml`: Creates a Kubernetes Service Account (`iris-api-ksa`) that is linked via Workload Identity to a Google Service Account (`iris-api-sa`). This is what grants the pod permission to read the model from your GCS bucket.
+      * `k8s/deployment.yaml`: Tells GKE how to run the app, rolling out the new container image version.
+      * `k8s/service.yaml`: Exposes the deployment to the internet via a `LoadBalancer`.
