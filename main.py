@@ -9,7 +9,7 @@ import mlflow
 from predict import load_model, format_features, make_prediction
 
 # MLflow Server Configuration
-MLFLOW_TRACKING_URI = "http://10.128.0.5:8081"
+MLFLOW_TRACKING_URI = "http://34.67.236.227:8081"
 
 if not (MLFLOW_TRACKING_URI.startswith("http://10.") or MLFLOW_TRACKING_URI.startswith("http://192.")): # Simple check
     print("="*50)
