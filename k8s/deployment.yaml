@@ -13,6 +13,7 @@ spec:
       labels:
         app: iris-api
     spec:
+      serviceAccountName: iris-api-ksa
       containers:
       - name: iris-api
         image: __IMAGE__
