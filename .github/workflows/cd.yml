@@ -78,8 +78,10 @@ jobs:
 
       - name: Deploy to GKE
         run: |
-          kubectl apply -f k8s/deployment.yaml
-          kubectl apply -f k8s/service.yaml
+	  # This applies all .yaml files in the k8s/ directory	
+	  kubectl apply -f k8s/
+
+          # Wait for the rollout to finish
           kubectl rollout status deployment/iris-api-deployment
 
       - name: Show service IP
