@@ -11,12 +11,6 @@ from predict import load_model, format_features, make_prediction
 # MLflow Server Configuration
 MLFLOW_TRACKING_URI = "http://34.67.236.227:8081"
 
-if not (MLFLOW_TRACKING_URI.startswith("http://10.") or MLFLOW_TRACKING_URI.startswith("http://192.")): # Simple check
-    print("="*50)
-    print("ERROR: Please update MLFLOW_TRACKING_URI in main.py")
-    print("with your Vertex AI Workbench internal IP (from 'hostname -i').")
-    print("="*50)
-
 os.environ["MLFLOW_TRACKING_URI"] = MLFLOW_TRACKING_URI
 mlflow.set_tracking_uri(MLFLOW_TRACKING_URI) # Also set it for the predict.py import
 
