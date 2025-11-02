@@ -4,3 +4,6 @@ dvc[gcs]
 dvc-gs
 pytest
 mlflow
+fastapi
+uvicorn[standard]
+pydantic
