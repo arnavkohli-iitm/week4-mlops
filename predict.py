@@ -15,10 +15,16 @@ def load_model():
     """
     Loads the latest 'iris-model' from the self-hosted MLflow server.
     """
-    print("Connecting to MLflow server at http://127.0.0.1:8081...")
+    tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
+    
+    if not tracking_uri:
+        print("ERROR: MLFLOW_TRACKING_URI environment variable not set.")
+        return None
+        
+    print(f"Connecting to MLflow server at {tracking_uri}...")
     try:
-        # Set the tracking URI to our local server
-        mlflow.set_tracking_uri("http://127.0.0.1:8081")
+        # Set the tracking URI to the one from our environment
+        mlflow.set_tracking_uri(tracking_uri)
 
         model_name = "iris-model"
 
