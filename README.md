@@ -1,68 +1,59 @@
-# MLOps Week 6: Continuous Deployment to Kubernetes
+# MLOps Week 7: Kubernetes Autoscaling and Stress Testing
 
-This project expands on the Week 5 CI pipeline by adding a full **Continuous Deployment (CD)** workflow.
+This project expands on the Week 6 CD pipeline by introducing automatic scaling and load testing.
 
-This pipeline containerizes the ML model's prediction API using **Docker** and automatically deploys it to the **Google Kubernetes Engine (GKE)**. It also uses **Workload Identity** to securely grant the GKE pod permissions to read the MLflow model from Google Cloud Storage.
+The pipeline now uses a **Kubernetes Horizontal Pod Autoscaler (HPA)** to automatically scale the API pods based on CPU load. The CD workflow is extended to run an automated stress test using **`wrk`** immediately after deployment to validate the scaling behavior and identify performance bottlenecks.
 
-## Overview
+## 🛠️Scaling - New Concepts & Tools
 
-This MLOps pipeline now demonstrates an end-to-end workflow:
-
-  * **CI (Week 5):** Validates data and tests code on `pull_request`.
-  * **CD (Week 6):** Builds, pushes, and deploys the production API on `push` to `main`.
-
-## 🛠️ New Tools Used
-
-  * **FastAPI / Uvicorn:** Serves the ML model as a REST API.
-  * **Docker:** Containerizes the FastAPI application.
-  * **Google Artifact Registry:** Stores the built Docker container images.
-  * **Google Kubernetes Engine (GKE):** Hosts the running API application.
-  * **Kubernetes (k8s):** Manages the deployment, scaling, and networking of the container.
-  * **Workload Identity:** Securely connects the Kubernetes pod to Google Cloud services (like GCS) without static keys.
+* **Kubernetes HPA:** The `HorizontalPodAutoscaler` resource automatically increases or decreases the number of pods in a deployment based on observed CPU utilization.
+* **`wrk`:** A high-performance HTTP benchmarking tool used to generate thousands of concurrent requests to stress test the API.
+* **Lua:** Used to write a small script (`wrk-post.lua`) to enable `wrk` to send `POST` requests with a JSON body, which is required by our `/predict` endpoint.
 
 ## 📂 New Project Structure
 
-This structure highlights the new files added for Week 6.
+This structure highlights the new files added to enable autoscaling and testing.
 
 ```
+
 ├── .github/workflows/
-│   ├── ci.yml          # Week 5: DVC check & pytest
-│   └── cd.yml          # Week 6: Build and Deploy to GKE
+│   ├── cd.yml          \# Modified: Added wrk stress-testing steps
 ├── k8s/
-│   ├── deployment.yaml   # GKE deployment spec
-│   ├── service.yaml      # GKE LoadBalancer service
-│   └── service-account.yaml # KSA for GCS permissions (Workload Identity)
-├── Dockerfile              # Defines the API container
-├── main.py                 # FastAPI application code
-├── predict.py              # Model loading/prediction logic
-├── requirements.txt        # Python dependencies
+│   ├── deployment.yaml   \# Modified: Added CPU resource requests
+│   ├── hpa.yaml          \# New: Defines the Horizontal Pod Autoscaler
+│   └── wrk-post.lua      \# New: Script for wrk to send POST requests
 └── ... (other files)
+
 ```
 
-## 🤖 CI/CD Pipeline
+## 🤖 Updated CD Pipeline: Deploy & Test
 
-The project now has two distinct pipelines.
+The `cd.yml` pipeline is updated with a new testing phase that runs *after* the deployment succeeds.
 
-### 1\. Continuous Integration (CI)
+1.  **Builds & Pushes Image:** (No change)
+2.  **Deploys to GKE:** (No change)
+    * Applies all `k8s/` manifests, including the new `hpa.yaml`.
+3.  **Install `wrk`:** The runner installs the `wrk` tool.
+4.  **Get LoadBalancer IP:** Waits for the `iris-api-service` to get an external IP address.
+5.  **Run Stress Test:** Executes `wrk` against the service IP to simulate high traffic.
+6.  **Observe Autoscaling:** Runs `kubectl get hpa` to show how the HPA reacted to the load.
 
-This pipeline (from Week 5) runs on pull requests to ensure code and data quality.
+## 🚀 Experiment Results
 
-  * Installs dependencies.
-  * Authenticates to Google Cloud.
-  * Pulls data from DVC.
-  * Runs `pytest` to validate data and code.
-  * Posts a test report to the pull request.
+The pipeline was run twice to observe two different scenarios as required.
 
-### 2\. Continuous Deployment (CD) 🚀
+### Experiment 1: Autoscaling (max_pods: 3)
 
-This new pipeline (`.github/workflows/cd.yml`) triggers on every `push` to the `main` branch and automatically deploys the live API.
+* **Configuration:**
+    * `k8s/hpa.yaml` set to `minReplicas: 1`, `maxReplicas: 3`.
+    * `cd.yml` ran `wrk -c1000` (1000 concurrent connections).
+* **Observation:** The HPA successfully detected the high CPU load (e.g., `250%/50%`) and scaled the number of `iris-api-deployment` pods from 1 to 3 to handle the traffic.
 
-Here's what it does:
+### Experiment 2: Bottleneck (max_pods: 1)
 
-1.  **Builds Image:** Uses the `Dockerfile` to build a new container image of the FastAPI application.
-2.  **Pushes to Registry:** Authenticates with GCP and pushes the tagged image to **Google Artifact Registry** (`us-central1-docker.pkg.dev/...`).
-3.  **Deploys to GKE:** Connects to the **Google Kubernetes Engine (GKE)** cluster (`mlops-cluster`).
-4.  **Applies Manifests:** It applies all Kubernetes configuration files from the `k8s/` directory:
-      * `k8s/service-account.yaml`: Creates a Kubernetes Service Account (`iris-api-ksa`) that is linked via Workload Identity to a Google Service Account (`iris-api-sa`). This is what grants the pod permission to read the model from your GCS bucket.
-      * `k8s/deployment.yaml`: Tells GKE how to run the app, rolling out the new container image version.
-      * `k8s/service.yaml`: Exposes the deployment to the internet via a `LoadBalancer`.
+* **Configuration:**
+    * `k8s/hpa.yaml` modified to `maxReplicas: 1`.
+    * `cd.yml` modified to `wrk -c2000` (2000 concurrent connections).
+* **Observation:** A bottleneck was successfully created.
+    * The `wrk` test showed very high latency and a large number of socket/read errors.
+    * The `kubectl get hpa` output showed the CPU target was extremely high, but the `REPLICAS` count remained **stuck at 1**, proving the HPA was constrained and could not scale out, which caused the performance bottleneck.
