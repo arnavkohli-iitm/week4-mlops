@@ -105,10 +105,10 @@ jobs:
       - name: Run Stress Test (Autoscaling)
         if: steps.get_ip.outputs.ip
         run: |
-          echo "Running wrk test (1000 conns) on http://${{ env.SERVICE_IP }}/predict"
-          wrk -t4 -c1000 -d30s             -s k8s/wrk-post.lua             http://${{ env.SERVICE_IP }}/predict > stress-test-results-1.txt
+          echo "Running wrk test (2000 conns) on http://${{ env.SERVICE_IP }}/predict"
+          wrk -t4 -c2000 -d30s             -s k8s/wrk-post.lua             http://${{ env.SERVICE_IP }}/predict > stress-test-results-1.txt
           
-          echo "--- Stress Test Results (1000 conns) ---"
+          echo "--- Stress Test Results (2000 conns) ---"
           cat stress-test-results-1.txt
 
       - name: Observe Autoscaling
