@@ -9,7 +9,7 @@ import mlflow
 from predict import load_model, format_features, make_prediction
 
 # MLflow Server Configuration
-MLFLOW_TRACKING_URI = "http://34.67.236.227:8081"
+MLFLOW_TRACKING_URI = "http://104.154.65.152:8081"
 
 os.environ["MLFLOW_TRACKING_URI"] = MLFLOW_TRACKING_URI
 mlflow.set_tracking_uri(MLFLOW_TRACKING_URI) # Also set it for the predict.py import

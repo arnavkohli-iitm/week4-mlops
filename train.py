@@ -8,8 +8,8 @@ import os
 
 # --- Configuration ---
 # Set the tracking URI to our new local server
-os.environ["MLFLOW_TRACKING_URI"] = "http://34.67.236.227:8081"
-mlflow.set_tracking_uri("http://34.67.236.227:8081")
+os.environ["MLFLOW_TRACKING_URI"] = "http://104.154.65.152:8081"
+mlflow.set_tracking_uri("http://104.154.65.152:8081")
 
 # MLflow experiment name
 EXPERIMENT_NAME = "iris-decision-tree-tuning"
