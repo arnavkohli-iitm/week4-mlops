@@ -4,7 +4,7 @@ kind: Deployment
 metadata:
   name: iris-api-deployment
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: iris-api
@@ -19,3 +19,8 @@ spec:
         image: __IMAGE__
         ports:
         - containerPort: 8000
+        resources:
+          requests:
+            cpu: "250m" # Request 0.25 of a vCPU
+          limits:
+            cpu: "500m" # Allow bursting up to 0.5 of a vCPU

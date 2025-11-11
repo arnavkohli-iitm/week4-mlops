@@ -7,8 +7,10 @@ on:
 
 env:
   PROJECT_ID: "warm-cycle-351713"
-  REGION: "us-central1"
-  IMAGE_PATH: "us-central1-docker.pkg.dev/warm-cycle-351713/mlops-repo/iris-api"
+  REGION: "us-east1"
+  ZONE: "us-east1-b"
+  CLUSTER_NAME: "mlops-cluster2"
+  IMAGE_PATH: "us-east1-docker.pkg.dev/warm-cycle-351713/mlops-repo/iris-api"
 
 jobs:
   build-and-push:
@@ -23,29 +25,25 @@ jobs:
         id: auth
         uses: 'google-github-actions/auth@v2'
         with:
-          # Use the JSON key from secrets
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
       - name: Configure Docker
+        # This now uses the new us-east1 region
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
 
       - name: Build and Push Docker image
         run: |
-          # Use the short git commit SHA as the image tag
           export IMAGE_TAG=${{ github.sha }}
           
-          docker build . \
-            --file Dockerfile \
-            --tag ${{ env.IMAGE_PATH }}:$IMAGE_TAG \
-            --tag ${{ env.IMAGE_PATH }}:latest
+          docker build .             --file Dockerfile             --tag ${{ env.IMAGE_PATH }}:${{ env.IMAGE_PATH }}             --tag ${{ env.IMAGE_PATH }}:latest
             
-          docker push ${{ env.IMAGE_PATH }}:$IMAGE_TAG
+          docker push ${{ env.IMAGE_PATH }}:${{ env.IMAGE_PATH }}
           docker push ${{ env.IMAGE_PATH }}:latest
 
   deploy:
-    name: Deploy to GKE
+    name: Deploy and Stress Test
     runs-on: ubuntu-latest
-    needs: build-and-push # Wait for the build to finish
+    needs: build-and-push
 
     steps:
       - name: Check out code
@@ -58,19 +56,17 @@ jobs:
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
       - name: Get GKE cluster credentials
-        # This configures `kubectl` to talk to our cluster
         uses: 'google-github-actions/get-gke-credentials@v2'
         with:
-          cluster_name: "mlops-cluster" # The name you gave your cluster
-          location: ${{ env.REGION }}
+          # Updated to use the new env variables
+          cluster_name: "${{ env.CLUSTER_NAME }}"
+          location: "${{ env.ZONE }}"
 
       - name: Update image tag in deployment
         run: |
           export IMAGE_TAG=${{ github.sha }}
-          export FINAL_IMAGE_PATH=${{ env.IMAGE_PATH }}:$IMAGE_TAG
+          export FINAL_IMAGE_PATH=${{ env.IMAGE_PATH }}:${{ env.IMAGE_PATH }}
           
-          # This command finds the placeholder __IMAGE__ in your deployment
-          # and replaces it with the real image path and tag.
           sed -i "s|__IMAGE__|$FINAL_IMAGE_PATH|g" k8s/deployment.yaml
           
           echo "--- New deployment.yaml ---"
@@ -81,8 +77,50 @@ jobs:
           kubectl apply -f k8s/
           kubectl rollout status deployment/iris-api-deployment
 
-      - name: Show service IP
+      - name: Install wrk
         run: |
-          echo "Waiting 60s for LoadBalancer IP..."
+          sudo apt-get update
+          sudo apt-get install -y wrk
+
+      - name: Get LoadBalancer IP
+        id: get_ip
+        run: |
+          echo "Waiting for LoadBalancer IP..."
+          COUNTER=0
+          while [ $COUNTER -lt 30 ]; do
+            IP=$(kubectl get service iris-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            if [ -n "$IP" ]; then
+              echo "SERVICE_IP=$IP" >> $GITHUB_ENV
+              echo "::set-output name=ip::$IP"
+              echo "Found IP: $IP"
+              break
+            fi
+            echo "IP not ready, waiting 10s..."
+            sleep 10
+            COUNTER=$((COUNTER + 1))
+          done
+          if [ -z "$IP" ]; then
+            echo "Error: LoadBalancer IP not found after 5 minutes."
+            exit 1
+          fi
+
+      - name: Run Stress Test (Autoscaling)
+        if: steps.get_ip.outputs.ip
+        run: |
+          echo "Running wrk test (1000 conns) on http://${{ env.SERVICE_IP }}/predict"
+          wrk -t4 -c1000 -d30s             -s k8s/wrk-post.lua             http://${{ env.SERVICE_IP }}/predict > stress-test-results-1.txt
+          
+          echo "--- Stress Test Results (1000 conns) ---"
+          cat stress-test-results-1.txt
+
+      - name: Observe Autoscaling
+        if: always()
+        run: |
+          echo "--- HPA Status (Mid-Test) ---"
+          kubectl get hpa iris-api-hpa
+          echo "Waiting 60s for scaling to complete and metrics update..."
           sleep 60
-          kubectl get service iris-api-service
+          echo "--- HPA Status (Post-Test) ---"
+          kubectl get hpa iris-api-hpa -o wide
+          echo "--- Pod Status (Post-Test) ---"
+          kubectl get pods -o wide
