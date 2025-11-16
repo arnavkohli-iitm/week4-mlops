@@ -1,59 +1,59 @@
-# MLOps Week 7: Kubernetes Autoscaling and Stress Testing
+# MLOps Week-8 Assignment: ML Security & Data Poisoning
 
-This project expands on the Week 6 CD pipeline by introducing automatic scaling and load testing.
+This project investigates the impact of data poisoning on a machine learning model. The project builds on the previous CI/CD pipeline by introducing experiments as part of the CI process.
 
-The pipeline now uses a **Kubernetes Horizontal Pod Autoscaler (HPA)** to automatically scale the API pods based on CPU load. The CD workflow is extended to run an automated stress test using **`wrk`** immediately after deployment to validate the scaling behavior and identify performance bottlenecks.
+The `train.py` script is modified to "poison" the training data by overwriting features with random noise at 0%, 5%, 10%, and 50% levels. The CI pipeline automatically runs these experiments, logs all parameters and metrics to MLFlow, and uses CML to post a comparative report on new Pull Requests.
 
-## 🛠️Scaling - New Concepts & Tools
+## 🛡️ New Concepts & Tools
 
-* **Kubernetes HPA:** The `HorizontalPodAutoscaler` resource automatically increases or decreases the number of pods in a deployment based on observed CPU utilization.
-* **`wrk`:** A high-performance HTTP benchmarking tool used to generate thousands of concurrent requests to stress test the API.
-* **Lua:** Used to write a small script (`wrk-post.lua`) to enable `wrk` to send `POST` requests with a JSON body, which is required by our `/predict` endpoint.
+* **Data Poisoning:** A function is added to `train.py` to programmatically overwrite a percentage of the training data with random values before training.
+* **MLFlow Experiment Tracking:** The training script is parameterized to log the `poison_percent` and the resulting `validation_accuracy_clean` for each run. This allows for direct comparison of the attack's impact.
+* **CML Reporting:** A new script (`scripts/generate_report.py`) queries the MLFlow server to build a Markdown comparison table, which is then posted as a PR comment by CML.
 
-## 📂 New Project Structure
+## 📂 Updated Project Structure
 
-This structure highlights the new files added to enable autoscaling and testing.
+This structure highlights the new files added to enable the experiments and reporting.
 
 ```
 
 ├── .github/workflows/
-│   ├── cd.yml          \# Modified: Added wrk stress-testing steps
-├── k8s/
-│   ├── deployment.yaml   \# Modified: Added CPU resource requests
-│   ├── hpa.yaml          \# New: Defines the Horizontal Pod Autoscaler
-│   └── wrk-post.lua      \# New: Script for wrk to send POST requests
+│   ├── ci.yml          \# Modified: Runs poisoning experiments and CML report
+├── scripts/
+│   └── generate\_report.py \# New: Queries MLFlow and builds report
+├── train.py              \# Modified: Added poisoning logic and argparse
 └── ... (other files)
 
 ```
 
-## 🤖 Updated CD Pipeline: Deploy & Test
+## 🤖 Updated CI Pipeline: Test & Validate
 
-The `cd.yml` pipeline is updated with a new testing phase that runs *after* the deployment succeeds.
+The `ci.yml` pipeline is updated to run the new validation steps:
 
-1.  **Builds & Pushes Image:** (No change)
-2.  **Deploys to GKE:** (No change)
-    * Applies all `k8s/` manifests, including the new `hpa.yaml`.
-3.  **Install `wrk`:** The runner installs the `wrk` tool.
-4.  **Get LoadBalancer IP:** Waits for the `iris-api-service` to get an external IP address.
-5.  **Run Stress Test:** Executes `wrk` against the service IP to simulate high traffic.
-6.  **Observe Autoscaling:** Runs `kubectl get hpa` to show how the HPA reacted to the load.
+1.  **DVC Pull:** Fetches the `iris.csv` dataset.
+2.  **Run Pytest:** Runs the existing data and prediction tests.
+3.  **Run Poisoning Experiments:** Executes `train.py` four separate times with `--poison_percent` set to `0.0`, `0.05`, `0.10`, and `0.50`.
+4.  **Generate Report:** Runs `scripts/generate_report.py` to query MLFlow and create a results table.
+5.  **Post CML Comment:** Combines the `pytest` output and the poisoning report into a single comment on the PR.
 
 ## 🚀 Experiment Results
 
-The pipeline was run twice to observe two different scenarios as required.
+The CI pipeline automatically runs the experiments. The `validation_accuracy_clean` metric shows the model's performance on the *original, clean data* after being trained on the *poisoned data*.
 
-### Experiment 1: Autoscaling (max_pods: 3)
+The CML report posted to the PR will look similar to this:
 
-* **Configuration:**
-    * `k8s/hpa.yaml` set to `minReplicas: 1`, `maxReplicas: 3`.
-    * `cd.yml` ran `wrk -c1000` (1000 concurrent connections).
-* **Observation:** The HPA successfully detected the high CPU load (e.g., `250%/50%`) and scaled the number of `iris-api-deployment` pods from 1 to 3 to handle the traffic.
+### 🧪 Poisoning Experiment Results (Experiment: iris-decision-tree-tuning)
 
-### Experiment 2: Bottleneck (max_pods: 1)
+| Poisoning %   |   Max Depth |   Accuracy (on Clean Data) |   Accuracy (on Train Data) |
+|:--------------|------------:|---------------------------:|---------------------------:|
+| 0.0%          |          10 |                   1        |                   1        |
+| 0.0%          |           3 |                   0.973684 |                   0.973684 |
+| 5.0%          |          10 |                   1        |                   1        |
+| 5.0%          |           3 |                   0.980263 |                   0.960526 |
+| 10.0%         |          10 |                   0.986842 |                   1        |
+| 10.0%         |           3 |                   0.980263 |                   0.960526 |
+| 50.0%         |          10 |                   0.947368 |                   1        |
+| 50.0%         |           3 |                   0.953947 |                   0.75     |
 
-* **Configuration:**
-    * `k8s/hpa.yaml` modified to `maxReplicas: 1`.
-    * `cd.yml` modified to `wrk -c2000` (2000 concurrent connections).
-* **Observation:** A bottleneck was successfully created.
-    * The `wrk` test showed very high latency and a large number of socket/read errors.
-    * The `kubectl get hpa` output showed the CPU target was extremely high, but the `REPLICAS` count remained **stuck at 1**, proving the HPA was constrained and could not scale out, which caused the performance bottleneck.
+### Observations
+
+As shown in the (example) results, even 5-10% poisoning causes a significant drop in accuracy. At 50% poisoning, the model's performance on clean data becomes the worst, demonstrating the critical vulnerability of the training process to data quality.
