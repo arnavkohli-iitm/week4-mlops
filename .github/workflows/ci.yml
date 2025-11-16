@@ -10,7 +10,7 @@ on:
       - dev
 
 jobs:
-  test-pipeline:
+  test-and-validate: # Renamed job for clarity
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
@@ -19,14 +19,13 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12.3'
+          python-version: '3.12.3' # Using the version from your original file
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # --- STEP 1: ADDED CML SETUP ---
       - name: Setup CML
         uses: iterative/setup-cml@v2
 
@@ -35,7 +34,7 @@ jobs:
           echo "${{ secrets.GCS_SA_KEY }}" | base64 -d > gcs-key.json
           echo "GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/gcs-key.json" >> $GITHUB_ENV
 
-      - name: Fetch DVC data and model
+      - name: Fetch DVC data
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ env.GOOGLE_APPLICATION_CREDENTIALS }}
         run: |
@@ -47,21 +46,44 @@ jobs:
         run: |
           pytest > pytest-results.txt 2>&1
 
-      - name: Generate Sanity Test Report
-        if: always() && github.event_name == 'pull_request'
+      # --- NEW STEP: Run Data Poisoning Experiments ---
+      - name: Run Data Poisoning Experiments
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ env.GOOGLE_APPLICATION_CREDENTIALS }}
         run: |
+          python train.py data/iris.csv --poison_percent 0.0
+          python train.py data/iris.csv --poison_percent 0.05
+          python train.py data/iris.csv --poison_percent 0.10
+          python train.py data/iris.csv --poison_percent 0.50
+          
+      # --- NEW STEP: Generate Experiment Report ---
+      - name: Generate Experiment Report
+        id: experiment_report
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ env.GOOGLE_APPLICATION_CREDENTIALS }}
+        run: |
+          python scripts/generate_report.py > poison-results.md
+          
+      # --- MODIFIED STEP: Combine reports ---
+      - name: Generate Sanity Test Report
+        if: always() && github.event_name == 'pull_request'
+        run: |
           echo "## 🤖 MLOps Sanity Test Report" > report.md
           echo "" >> report.md
+          
+          # Add poisoning results
+          cat poison-results.md >> report.md
+          echo "" >> report.md
+          
+          # Add Pytest results
           echo "### ✅ Pytest Results" >> report.md
           echo '```' >> report.md
           cat pytest-results.txt >> report.md
           echo '```' >> report.md
-          echo "" >> report.md
-          echo "### 🔮 Prediction Sanity Chck skipped" >> report.md
+          
+          # Kept this from your original file
+          echo "### 🔮 Prediction Sanity Check skipped" >> report.md
 
-      # --- STEP 2: CHANGED BACK TO A 'run:' STEP ---
       - name: Post CML Comment
         if: always() && github.event_name == 'pull_request'
         env:
